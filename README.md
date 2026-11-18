@@ -1,13 +1,13 @@
 # Crypto Client
 
-A Tkinter desktop client for the course crypto server. It demonstrates two operations:
+A Tkinter desktop client for the course crypto server. The server hands out random keys, and the client uses them for two tasks:
 
-- **AES-256-GCM:** the app fetches a key from the server, encrypts a file locally, has the server decrypt it, and checks that the returned bytes match the original.
-- **HMAC:** the app computes the course's custom HMAC over a file, and the server checks it. This is not standard HMAC (RFC 2104).
+- **AES-256-GCM encryption:** the client encrypts a file locally, the server decrypts it, and the client checks that the result matches the original file.
+- **HMAC integrity checking:** the client computes the course's custom HMAC for a file, and the server confirms whether the file and HMAC match. This is not standard HMAC (RFC 2104).
 
-The protocol, file formats and algorithms are defined in `crypto_message_spec_v2.md`.
+The protocol and algorithms are defined in `crypto_message_spec_v2.md`.
 
-> **Security note:** the teaching server uses plain, unencrypted TCP. Keys and files cross the network in the clear, and the username is the only credential. Do not send real secrets.
+> **Security note:** the server uses plain, unencrypted TCP. Keys and files cross the network in the clear, and the username is the only credential. Do not send real secrets.
 
 ## Setup
 
@@ -18,35 +18,69 @@ python -m pip install -r requirements.txt
 python crypto_client.py
 ```
 
-## Usage
+## Server configuration
 
-1. Enter the **Host**, **Port** (default 8080) and **Username** provided by your instructor. These are not saved between runs.
-2. Choose **AES** or **HMAC** with the operation buttons.
-3. Click **Get AES Key** or **Get HMAC Key**, then browse to an input file and click **Start**. The window shows only "Key loaded", never the key.
-   For HMAC you can instead choose **Verify saved files** to check a file against its existing `.hmac` and `.hmackey` files, with no key needed.
+Fill in the **Server** section at the top of the window before any request:
 
-### Results
+| Field | What to enter |
+|---|---|
+| **Host** | The server's IP address, as given by your instructor (a host name such as `localhost` also works) |
+| **Port** | The server's port (default `8080`) |
+| **Username** | Your assigned username: 1–32 characters from `A-Z a-z 0-9 _ . -` |
 
-The outcome appears in the result line below the Start button, with details in the activity log at the bottom of the window.
+These values are not saved between runs. Invalid values are rejected without contacting the server.
 
-| Operation | Result shown |
+## Walkthrough
+
+### AES
+1. Select **AES encrypt / decrypt**.
+2. Click **Get AES Key**. The window shows "Key loaded" (never the key itself).
+3. Click **Browse...** next to *Input file* and choose a file. The *Output folder* fills in with the file's folder, and you can change it.
+4. Click **Start Encrypting**.
+
+### HMAC
+1. Select **HMAC verify**.
+2. Choose a mode:
+   - **Compute & verify:** click **Get HMAC Key**, browse to an input file (and change the output folder if you want), then click **Start Verifying**.
+   - **Verify saved files:** browse to the input file. Its `.hmac` and `.hmackey` paths fill in automatically, and you can change them. Click **Start Verifying**. No key is needed.
+
+A key can be used for one run. After the server gives a valid reply you must fetch a new key. If an error occurs, the key is kept so you can retry.
+
+## Results and saved files
+
+The outcome appears in the result line just below the Start button, with more detail in the **Activity** log at the bottom of the window.
+
+| Workflow | Result shown |
 |---|---|
 | AES | **Match** or **Mismatch** |
 | HMAC | **VERIFIED** or **FAILED** |
 
-Errors (such as a bad username, a connection problem or an oversized file) are shown as a separate red message and a dialog. A **FAILED** verification is a normal result, not an error.
+**FAILED** is a normal answer (the HMAC does not match the file and key). Errors, such as a bad username, an unreachable server or a file over the size limit, appear as a red message and a dialog instead.
 
-### Saved files
+Files are saved in the output folder (by default, next to the input file). The app asks before overwriting an existing file.
 
-Files are saved next to the input file, or in the output folder you choose, and the app asks before overwriting anything. For an input file `report.txt`:
+| File | Written by | Naming for `photo.jpg` |
+|---|---|---|
+| Encrypted file | AES | `photo.jpg.enc` |
+| AES key | AES | `photo.jpg.key` |
+| Decrypted copy, only after a Match | AES | `photo_decrypted.jpg` |
+| HMAC | HMAC (compute) | `photo.jpg.hmac` |
+| HMAC key | HMAC (compute) | `photo.jpg.hmackey` |
 
-- **AES:** `report.txt.enc`, `report.txt.key`, and `report_decrypted.txt` (only after a Match)
-- **HMAC:** `report.txt.hmac` and `report.txt.hmackey`
+The decrypted copy keeps the original extension, with `_decrypted` added before it. A name with no extension, such as `README`, becomes `README_decrypted`.
 
 ## Testing
+
+Run the automated tests (they use a built-in local mock server, so no real server is needed):
 
 ```
 python -m unittest discover -s tests
 ```
 
-The tests use a local mock server (`mock_server.py`) and need no real server. GUI tests are skipped if no display is available. To try the app without the real server, run `python mock_server.py --port 8080`, then connect to host `127.0.0.1`, port `8080`, with any valid username.
+To use the app without the real server, start the mock server in a separate terminal:
+
+```
+python mock_server.py --port 8080
+```
+
+Then run the app with Host `127.0.0.1`, Port `8080` and any valid username. The mock server only accepts connections from the same computer.
