@@ -168,19 +168,59 @@ It should not present generated files as extra deliverables. Modify only `README
 - **`.gitignore`:** replaced the stale `*.decrypted` rule with `*_decrypted.*` and `*_decrypted`, and removed a duplicated Claude Code settings block. Checked that `photo_decrypted.jpg`, `README_decrypted` and `archive.tar_decrypted.gz` are ignored, and that source, tests and docs are not.
 - **This log:** added sections 10–12 and refreshed the closing file list and open items, which were out of date (they said there was no `.gitignore` and counted 99 tests).
 
+## 13. README rewrite (second pass)
+
+**User:** Update `README.md` to include:
+1. A brief overview of the AES-256-GCM and HMAC problems solved.
+2. Python requirements, installation and startup commands.
+3. Server configuration, clearly saying Host is the server's IP address.
+4. A step-by-step walkthrough for both workflows.
+5. Where results appear and where generated files are saved.
+6. The file naming convention.
+7. Commands for the tests and the local mock server.
+8. A brief security note about unencrypted TCP.
+Item 9 was left blank. Avoid long technical explanations and a detailed project structure, do not present generated files as deliverables, verify every instruction against the implementation, and change nothing but the README.
+
+**Assistant:** Rewrote `README.md`, leaving item 9 out and saying so. Before writing, it started the mock server from the command line and fetched a 32-byte key to confirm the documented commands work, and checked the button and mode labels, the default port, the naming table and the result-line location against the code. The README says Host is the server's IP address (a host name such as `localhost` also works, because the app accepts both) and that the mock server only accepts connections from the same computer.
+
+## 14. Default `results/` output folder
+
+**User:** Update `crypto_client.py` to create a `results/` folder beside the selected input file automatically and use it as the default output location for AES and HMAC. Keep the Output folder Browse option, keep the file naming and the overwrite confirmation, and update the README and tests.
+
+**Assistant:** Implemented it and ran the full suite (119 tests, all passing):
+- **Code:** added `default_output_dir()`, `prepare_output_dir()` and `RESULTS_DIR_NAME`. The Output folder field now fills with `<input folder>/results`. The folder is created at Start, only when it is the default one, and only after the input file passes validation. A folder the user picks must already exist, and an empty field falls back to `results/`.
+- **Saved-files lookup:** because the compute mode now saves `.hmac` and `.hmackey` into `results/`, the saved-mode auto-fill would have found nothing. `default_companion_paths()` now checks each file in `results/` first and falls back to beside the input file (the spec's convention). The lookup also re-runs when the HMAC mode is switched.
+- **Tests:** four GUI tests and the helpers were updated for the new location. New tests cover on-demand creation, "other folders are not created", a plain file blocking `results/`, the companion lookup order, a custom output folder, a missing custom folder, the empty-field fallback, and no folder created on rejected input or a declined overwrite. A bug in a test helper (it did not create sub-folders) was found and fixed.
+- **README:** updated for the `results` default and the saved-files table.
+- It listed what was left stale: `design_v1.md`, `requirements_v2.md` and `.gitignore`.
+
+## 15. Design and requirements brought up to date
+
+**User:** "make the necessary updates to files design_v1 and requirements_v2.md"
+
+**Assistant:**
+- **`requirements_v2.md`:** added R41 (default `results` folder, created on demand after input validation, other folders never created, Browse kept). It took the next free number so existing IDs did not change, and sits in Section 7, now titled "Output Location and Overwrite Safety". Updated R13, R14, R15, R16, R18 and R20.
+- **`design_v1.md`:** added an "Output folder helpers" block, the new step in the Start sequence, the updated auto-fill description, a traceability row and the test list. Added D7 (only the default folder is auto-created, so a typo cannot silently make a new folder) and D8 (companion files are looked up in `results/` first, then beside the input file).
+
+## 16. This log
+
+**User:** "append to project_chat.md"
+
+**Assistant:** Added sections 13–16 and refreshed the closing file list and open items. The old open item "Nothing has been committed" was wrong, since the repository now has commits, so it was removed.
+
 ---
 
 ## Files produced in this session
 
 | File | Purpose |
 |---|---|
-| `requirements_v2.md` | Approved requirements (R1–R40) |
-| `design_v1.md` | Approved design (D1–D6) |
+| `requirements_v2.md` | Approved requirements (R1–R41) |
+| `design_v1.md` | Approved design (D1–D8) |
 | `crypto_client.py` | The application (validation, framing, transport, crypto, workflows, self-checks, GUI) |
 | `mock_server.py` | Local mock server with its own HMAC and fault modes |
-| `tests/` | 102 `unittest` tests (all passing at last run) |
+| `tests/` | 119 `unittest` tests (all passing at last run) |
 | `requirements.txt` | `cryptography>=46.0.0` |
-| `README.md` | Setup, usage, results and testing |
+| `README.md` | Setup, server configuration, walkthrough, results, file naming and testing |
 | `interrogation.md` | Written answers Q1–Q5 (plus the HMAC caveat) |
 | `project_chat.md` | This log |
 | `.gitignore` | Ignores caches, editor files and the app's generated key, encrypted and decrypted files |
@@ -189,4 +229,3 @@ It should not present generated files as extra deliverables. Modify only `README
 
 - Real-server testing has not been done. It needs the host and username from the instructor.
 - R40 and the shortened `README.md` disagree about including project structure.
-- Nothing has been committed.
