@@ -13,7 +13,7 @@ tests/
   test_validation.py    username/host/port, size limits
   test_framing.py       framing vector, recv_exact, reply validation
   test_crypto.py        AES and HMAC vectors, standard-HMAC negative check
-  test_workflows.py     both workflows end to end against the mock server
+  test_workflows.py     both workflows end to end against the mock server, plus decrypted-file naming and the output-folder rules
   test_mock_server.py   mock server's own HMAC vs Section 9 vectors, fault modes
   test_gui_smoke.py     builds the window, skipped if no display
 ```
@@ -100,6 +100,13 @@ Each returns `(ok, message)`. `run_self_checks()` produces a `SelfCheckStatus(fr
 
 All three return a result dataclass. They take plain arguments (including already-read bytes), so they can be tested without a GUI.
 
+**Output folder helpers [R41].**
+- `default_output_dir(in_path)` returns `<folder of the input file>/results`, as an absolute path.
+- `prepare_output_dir(out_dir, in_path)` creates `out_dir` with `os.makedirs` only when it is the default folder (compared after normalizing the path), then runs `check_output_dir()`. Any other folder must already exist and be writable, otherwise it raises `FileAccessError` and nothing is created. A failure to create the default folder (for example a plain file named `results`) also raises `FileAccessError`.
+- `default_companion_paths(in_path)` returns the `.hmac` and `.hmackey` paths to use in saved mode. It checks each one separately: `results/<name>.hmac` (or `.hmackey`) if that file exists, otherwise `<input>.hmac` (or `.hmackey`) beside the input file, which is the spec's convention.
+
+The workflow functions below take an `out_dir` that the caller has already prepared, and they still call `check_output_dir()` as a safety net.
+
 **`aes_roundtrip(conn, key, in_path, out_dir) -> AesResult`**
 1. Read the input file [R10, R11].
 2. Resolve the output paths: `<out_dir>/<name>.enc` and `<name>.key`, plus the decrypted copy `<stem>_decrypted<ext>` (`name` is the input file's name; `decrypted_name()` inserts `_decrypted` before the last extension, so `photo.jpg` becomes `photo_decrypted.jpg` and a name with no extension just gets the suffix).
@@ -112,7 +119,7 @@ All three return a result dataclass. They take plain arguments (including alread
 **`hmac_compute_and_verify(conn, key, in_path, out_dir) -> HmacResult`**
 1. Read the input file.
 2. Compute the HMAC.
-3. Write `<name>.hmac` and `<name>.hmackey` as base64 text [R18].
+3. Write `<name>.hmac` and `<name>.hmackey` into `out_dir` as base64 text [R18].
 4. Send `verify_hmac`.
 5. Return `VERIFIED` or `FAILED`.
 
@@ -121,7 +128,7 @@ All three return a result dataclass. They take plain arguments (including alread
 2. Read the two companion files, strip whitespace, base64-decode, and require exactly 32 bytes each, otherwise raise `ValidationError` [R19].
 3. Send `verify_hmac` and return the result. The stored HMAC is sent as-is, and the client does not recompute it.
 
-**Overwrite pre-check [R24].** `planned_outputs(workflow, ...)` returns every path a run could write, including the decrypted-copy path. The controller checks which exist and asks for confirmation on the main thread before starting the worker. Declining cancels the run before any network activity. The check happens at Start, not at Get Key.
+**Overwrite pre-check [R24].** `planned_outputs(workflow, ...)` returns every path a run could write, including the decrypted-copy path. The controller checks which exist and asks for confirmation on the main thread before starting the worker. Declining cancels the run before any network activity. The check happens at Start, not at Get Key. The output folder is prepared (and the default `results` folder created) just before this check and after the input file has been validated, so a rejected input never creates the folder. If the user declines the overwrite, files already in the folder are left untouched.
 
 **Key lifetime [R22].**
 - A `KeyHolder` per workflow stores `bytes | None`, with `set()`, `clear()` and `loaded` (bool).
@@ -174,14 +181,14 @@ All three return a result dataclass. They take plain arguments (including alread
   - a fetched key is loaded (AES, and HMAC compute mode), or the three file paths are filled in (HMAC saved mode).
 
   A single `refresh_controls()` recomputes every widget state.
-- Selected paths are `tk.StringVar` values, so they are visible and editable before starting [R29]. In saved mode, picking the input file auto-fills `<file>.hmac` and `<file>.hmackey` (changeable by the user) [R20]. The output folder defaults to the input file's folder when the input is chosen and the output is empty.
+- Selected paths are `tk.StringVar` values, so they are visible and editable before starting [R29]. In saved mode, picking the input file auto-fills the `.hmac` and `.hmackey` paths from `default_companion_paths()` (changeable by the user), and the lookup is repeated when the HMAC mode is switched, so files just saved in `results/` are found [R20]. The Output folder field is filled with `default_output_dir()` when the input is chosen, unless the user has typed their own value. An empty field falls back to the same default at Start [R41].
 - The Key loaded label shows only that text, with no key characters [R23].
 
 ### 3.3 Background threading [R30, R33, R34]
 
 - Each action (Get Key, Start) is a function run on a `threading.Thread(daemon=True)`. It never touches Tk widgets. Its outcome is put on a `queue.Queue` as `("ok", result)` or `("error", ClientError)`, plus `("log", text)` messages.
 - The main thread polls the queue with `root.after(50, ...)`, updates widgets, and re-enables controls when the task ends.
-- Start sequence on the main thread: validate connection fields → check file existence/size where cheap → overwrite confirmation → set busy, start the progress bar → start the worker.
+- Start sequence on the main thread: validate connection fields → check file existence/size where cheap → prepare the output folder (create the default `results` folder) → overwrite confirmation → set busy, start the progress bar → start the worker.
 - Closing the window while busy asks for confirmation and then destroys the window. The daemon thread is abandoned.
 
 ### 3.4 Logging
@@ -220,9 +227,10 @@ All three return a result dataclass. They take plain arguments (including alread
 | Protocol, timeouts, reply validation | R5–R8 | `build_request`, `exchange`, `read_reply`, typed wrappers |
 | Input validation and limits | R9–R13 | `validate_*`, `read_input_file`, `save_*` |
 | AES workflow | R14–R17 | `aes_roundtrip` |
-| HMAC workflow | R18–R20 | `hmac_compute_and_verify`, `hmac_verify_saved`, controller auto-fill |
+| HMAC workflow | R18–R20 | `hmac_compute_and_verify`, `hmac_verify_saved`, `default_companion_paths`, controller auto-fill |
 | Key handling | R21–R23 | `KeyHolder`, controller, `ActivityLog` rule |
 | Overwrite safety | R24 | `planned_outputs`, Start sequence |
+| Output location | R41 | `default_output_dir`, `prepare_output_dir`, `default_companion_paths`, controller auto-fill |
 | Self-checks | R25–R26 | `check_*`, `SelfCheckStatus`, `refresh_controls` |
 | UI | R27–R34 | GUI layout, controller, threading |
 | Testing | R35–R38 | `mock_server.py`, `tests/` |
@@ -247,3 +255,5 @@ All three return a result dataclass. They take plain arguments (including alread
 - **D4.** Reading input files is capped at `limit + 1` bytes, so a very large file is never loaded in full.
 - **D5.** The server's `error` detail text is shown to the user as-is (it is generic), and truncated to a safe length.
 - **D6.** The overwrite check includes the decrypted-copy path, even though it is written only on success.
+- **D7.** *(Added with the `results` folder change.)* Only the default `results` folder is created automatically. A folder chosen with Browse (or typed) must already exist, so a typo cannot silently create a new folder.
+- **D8.** *(Added with the `results` folder change.)* In saved mode each companion file is taken from `results/` if it exists there and otherwise from beside the input file. This keeps files saved by this app and files from other clients (the spec's convention) both working.

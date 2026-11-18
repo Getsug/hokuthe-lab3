@@ -312,6 +312,34 @@ def check_output_dir(out_dir):
         raise FileAccessError(f"Output folder is not writable: {out_dir}")
 
 
+RESULTS_DIR_NAME = "results"
+
+
+def default_output_dir(in_path):
+    """The default output folder: a "results" folder beside the input file."""
+    return os.path.join(os.path.dirname(os.path.abspath(in_path)), RESULTS_DIR_NAME)
+
+
+def _same_path(a, b):
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def prepare_output_dir(out_dir, in_path):
+    """Validate the output folder, creating it only if it is the default one.
+
+    The default "results" folder beside the input file is created on demand.
+    Any other folder the user chose must already exist.
+    """
+    if _same_path(out_dir, default_output_dir(in_path)):
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as e:
+            raise FileAccessError(
+                f"Cannot create the output folder '{out_dir}': {e.strerror or e}")
+    check_output_dir(out_dir)
+    return out_dir
+
+
 def decrypted_name(filename):
     """Insert "_decrypted" before the last extension: photo.jpg -> photo_decrypted.jpg.
 
@@ -386,8 +414,19 @@ def hmac_output_paths(in_path, out_dir):
 
 
 def default_companion_paths(in_path):
-    """Spec-convention .hmac / .hmackey paths next to the input file."""
-    return in_path + ".hmac", in_path + ".hmackey"
+    """Where to look for a file's saved .hmac and .hmackey files.
+
+    Each one is taken from the default results folder if it exists there
+    (where this app saves them), otherwise from beside the input file (the
+    spec's convention, used by other clients).
+    """
+    name = os.path.basename(in_path)
+    results = default_output_dir(in_path)
+    chosen = []
+    for suffix in (".hmac", ".hmackey"):
+        in_results = os.path.join(results, name + suffix)
+        chosen.append(in_results if os.path.isfile(in_results) else in_path + suffix)
+    return tuple(chosen)
 
 
 def hmac_compute_and_verify(conn, key, in_path, out_dir):
@@ -774,13 +813,10 @@ class App:
         for var in (self.workflow, self.hmac_mode):
             var.trace_add("write", lambda *_: self.refresh_controls())
         self.aes_in.trace_add("write", lambda *_: self._autofill(
-            self.aes_in, [("aes_out", self.aes_out, os.path.dirname)]))
-        self.hmac_in.trace_add("write", lambda *_: self._autofill(
-            self.hmac_in,
-            [("hmac_out", self.hmac_out, os.path.dirname),
-             ("hmac_file", self.hmac_file, lambda p: default_companion_paths(p)[0]),
-             ("hmackey_file", self.hmackey_file,
-              lambda p: default_companion_paths(p)[1])]))
+            self.aes_in, [("aes_out", self.aes_out, default_output_dir)]))
+        self.hmac_in.trace_add("write", lambda *_: self._autofill_hmac())
+        # saved files may have just been created, so look again on a mode switch
+        self.hmac_mode.trace_add("write", lambda *_: self._autofill_hmac())
         for var in (self.hmac_in, self.hmac_file, self.hmackey_file):
             var.trace_add("write", lambda *_: self.refresh_controls())
 
@@ -795,6 +831,14 @@ class App:
                 value = derive(path) if path else ""
                 self._auto[name] = value
                 var.set(value)
+
+    def _autofill_hmac(self):
+        self._autofill(
+            self.hmac_in,
+            [("hmac_out", self.hmac_out, default_output_dir),
+             ("hmac_file", self.hmac_file, lambda p: default_companion_paths(p)[0]),
+             ("hmackey_file", self.hmackey_file,
+              lambda p: default_companion_paths(p)[1])])
 
     def _browse_file(self, var):
         path = filedialog.askopenfilename()
@@ -953,9 +997,8 @@ class App:
 
     @staticmethod
     def _output_dir(var, in_path):
-        out_dir = var.get().strip() or os.path.dirname(in_path) or "."
-        check_output_dir(out_dir)
-        return out_dir
+        out_dir = var.get().strip() or default_output_dir(in_path)
+        return prepare_output_dir(out_dir, in_path)
 
     def _prepare_aes(self, conn):
         in_path = self.aes_in.get().strip()

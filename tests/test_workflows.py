@@ -17,6 +17,7 @@ class WorkflowTestCase(unittest.TestCase):
 
     def make(self, name, data):
         p = os.path.join(self.dir, name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "wb") as f:
             f.write(data)
         return p
@@ -53,6 +54,81 @@ class DecryptedNameTests(unittest.TestCase):
         self.assertEqual(enc, os.path.join("out", "photo.jpg.enc"))
         self.assertEqual(key, os.path.join("out", "photo.jpg.key"))
         self.assertEqual(dec, os.path.join("out", "photo_decrypted.jpg"))
+
+
+class ResultsFolderTests(WorkflowTestCase):
+    def test_default_output_dir_is_results_beside_input(self):
+        src = os.path.join(self.dir, "sub", "photo.jpg")
+        self.assertEqual(cc.default_output_dir(src),
+                         os.path.join(os.path.abspath(self.dir), "sub", "results"))
+
+    def test_default_output_dir_for_relative_path(self):
+        self.assertEqual(cc.default_output_dir("photo.jpg"),
+                         os.path.join(os.path.abspath("."), "results"))
+
+    def test_default_folder_is_created_on_demand(self):
+        src = self.make("a.txt", b"x")
+        target = cc.default_output_dir(src)
+        self.assertFalse(os.path.exists(target))
+        self.assertEqual(cc.prepare_output_dir(target, src), target)
+        self.assertTrue(os.path.isdir(target))
+        cc.prepare_output_dir(target, src)          # already there: fine
+
+    def test_default_folder_check_ignores_path_spelling(self):
+        src = self.make("a.txt", b"x")
+        spelled = os.path.join(self.dir, ".", "results", "")
+        cc.prepare_output_dir(spelled, src)
+        self.assertTrue(os.path.isdir(os.path.join(self.dir, "results")))
+
+    def test_other_folders_are_not_created(self):
+        src = self.make("a.txt", b"x")
+        other = os.path.join(self.dir, "elsewhere")
+        with self.assertRaises(cc.FileAccessError):
+            cc.prepare_output_dir(other, src)
+        self.assertFalse(os.path.exists(other))
+
+    def test_existing_custom_folder_is_accepted(self):
+        src = self.make("a.txt", b"x")
+        other = os.path.join(self.dir, "elsewhere")
+        os.mkdir(other)
+        self.assertEqual(cc.prepare_output_dir(other, src), other)
+
+    def test_cannot_create_results_when_blocked_by_a_file(self):
+        src = self.make("a.txt", b"x")
+        self.make("results", b"i am a file, not a folder")
+        with self.assertRaises(cc.FileAccessError):
+            cc.prepare_output_dir(cc.default_output_dir(src), src)
+
+    def test_companions_prefer_results_then_fall_back_beside_input(self):
+        src = self.make("doc.txt", b"x")
+        # nothing saved yet: spec convention (beside the input file)
+        self.assertEqual(cc.default_companion_paths(src),
+                         (src + ".hmac", src + ".hmackey"))
+        # saved by this app: found in the results folder
+        self.make(os.path.join("results", "doc.txt.hmac"), b"m")
+        self.make(os.path.join("results", "doc.txt.hmackey"), b"k")
+        res = cc.default_output_dir(src)
+        self.assertEqual(cc.default_companion_paths(src),
+                         (os.path.join(res, "doc.txt.hmac"),
+                          os.path.join(res, "doc.txt.hmackey")))
+
+    def test_companions_chosen_independently(self):
+        src = self.make("doc.txt", b"x")
+        self.make(os.path.join("results", "doc.txt.hmac"), b"m")
+        self.make("doc.txt.hmackey", b"k")             # key only beside the input
+        res = cc.default_output_dir(src)
+        self.assertEqual(cc.default_companion_paths(src),
+                         (os.path.join(res, "doc.txt.hmac"), src + ".hmackey"))
+
+    def test_workflow_writes_into_created_results_folder(self):
+        src = self.make("photo.jpg", b"pixels")
+        out = cc.prepare_output_dir(cc.default_output_dir(src), src)
+        with MockServer() as srv:
+            key = cc.request_key("127.0.0.1", srv.port, "student01")
+            res = cc.aes_roundtrip(self.conn(srv), key, src, out)
+        self.assertTrue(res.match)
+        self.assertEqual(sorted(os.listdir(out)),
+                         ["photo.jpg.enc", "photo.jpg.key", "photo_decrypted.jpg"])
 
 
 class AesRoundtripTests(WorkflowTestCase):

@@ -31,22 +31,22 @@ Protocol details defined in `crypto_message_spec_v2.md` are not repeated here.
 - **R10.** Each input file shall be read once, in binary mode. The number of bytes actually read shall be checked against the workflow's limit in Section 8 of the spec: 1,048,548 bytes for AES plaintext and 1,048,576 bytes for HMAC files.
 - **R11.** A file over its limit shall be refused before any connection is opened, and the error shall name the file and its size.
 - **R12.** Empty files shall be accepted in both workflows.
-- **R13.** File read errors, missing or read-only output folders, and failed writes shall each produce a clear error message.
+- **R13.** File read errors, missing or read-only output folders (other than the default folder, which R41 creates), and failed writes shall each produce a clear error message.
 
 ## 4. AES Workflow
 
-- **R14.** The user shall fetch an AES key, select an input file and an output folder, and start the run. The run encrypts locally, sends the encrypted file and key to the server for decryption, and compares the returned bytes with the original.
-- **R15.** The application shall save `<file>.enc` and `<file>.key` using the spec's naming convention, immediately after local encryption and before the network request.
-- **R16.** The application shall save the returned decrypted file as `<stem>_decrypted<ext>` (the original extension is kept, for example `photo.jpg` becomes `photo_decrypted.jpg`) only after a byte-for-byte match with the original.
+- **R14.** The user shall fetch an AES key, select an input file and an output folder (which defaults as described in R41), and start the run. The run encrypts locally, sends the encrypted file and key to the server for decryption, and compares the returned bytes with the original.
+- **R15.** The application shall save `<file>.enc` and `<file>.key` in the output folder, using the spec's naming convention, immediately after local encryption and before the network request.
+- **R16.** The application shall save the returned decrypted file in the output folder as `<stem>_decrypted<ext>` (the original extension is kept, for example `photo.jpg` becomes `photo_decrypted.jpg`) only after a byte-for-byte match with the original.
 - **R17.** The result shall be displayed as **Match** or **Mismatch**.
 
 ## 5. HMAC Workflow
 
 The HMAC workflow has two modes, chosen by a mode toggle.
 
-- **R18.** *Compute & verify:* using a fetched key, the application computes the HMAC locally, saves `<file>.hmac` and `<file>.hmackey` before the network request, sends `verify_hmac`, and displays the result.
+- **R18.** *Compute & verify:* using a fetched key, the application computes the HMAC locally, saves `<file>.hmac` and `<file>.hmackey` in the output folder before the network request, sends `verify_hmac`, and displays the result.
 - **R19.** *Verify saved files:* the user selects a file and its `.hmac` and `.hmackey` files. The application shall validate that both companion files contain base64 text decoding to exactly 32 bytes, then send `verify_hmac`. No key fetch is required in this mode.
-- **R20.** In *Verify saved files* mode, selecting the file shall auto-fill the `.hmac` and `.hmackey` paths from the spec's naming convention. The user shall be able to change them.
+- **R20.** In *Verify saved files* mode, selecting the file shall auto-fill the `.hmac` and `.hmackey` paths. Each path shall point to the file in the default `results` folder (R41) if it exists there, and otherwise to the spec's location beside the input file. The paths shall be looked up again when the mode is switched, and the user shall be able to change them.
 
 ## 6. Key Handling
 
@@ -54,9 +54,10 @@ The HMAC workflow has two modes, chosen by a mode toggle.
 - **R22.** Keys shall be single-use. Fetching a new key replaces the previous one. A key shall be cleared when the server returns a valid reply (Match, Mismatch, `VERIFIED` or `FAILED`) and retained after an error or connection failure so the user can retry.
 - **R23.** The UI shall show only "Key loaded" and shall never display key material. Keys shall be written only to the companion files the spec requires and shall never be logged.
 
-## 7. File Overwrite Safety
+## 7. Output Location and Overwrite Safety
 
 - **R24.** The application shall ask for confirmation before overwriting any existing file. The confirmation shall happen before any network activity, and declining shall cancel the run.
+- **R41.** The default output folder shall be a `results` folder beside the selected input file, shown in the Output folder field when the input file is chosen (an empty field shall fall back to it). The application shall create it when a run starts, and only after the input file has passed validation. A folder the user chooses instead shall not be created by the application and shall already exist. The Browse option for choosing another folder shall remain available.
 
 ## 8. Startup Self-Checks
 

@@ -78,6 +78,7 @@ class GuiTestCase(unittest.TestCase):
 
     def make_file(self, name, data):
         p = os.path.join(self.tmp.name, name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "wb") as f:
             f.write(data)
         return p
@@ -85,6 +86,11 @@ class GuiTestCase(unittest.TestCase):
     def read(self, p):
         with open(p, "rb") as f:
             return f.read()
+
+    @property
+    def results(self):
+        """The default output folder for files made in the temp dir."""
+        return os.path.join(self.tmp.name, "results")
 
     def start_enabled(self, app):
         return "disabled" not in app.start_btn.state()
@@ -104,17 +110,75 @@ class AesGuiTests(GuiTestCase):
         self.assertEqual(app.key_text["aes"].get(), "Key loaded")
         self.assertTrue(self.start_enabled(app))
 
-        app.aes_in.set(src)                                    # output folder autofills
-        self.assertEqual(app.aes_out.get(), self.tmp.name)
+        app.aes_in.set(src)                          # output folder autofills
+        self.assertEqual(app.aes_out.get(), self.results)
+        self.assertFalse(os.path.exists(self.results))    # not created until Start
         app.start()
         self.settle(app)
         self.assertTrue(app.result_text.get().startswith("Match"), app.result_text.get())
-        dec = os.path.join(self.tmp.name, "note_decrypted.txt")
+        dec = os.path.join(self.results, "note_decrypted.txt")
         self.assertEqual(self.read(dec), b"some secret text")
-        self.assertTrue(os.path.exists(src + ".enc") and os.path.exists(src + ".key"))
+        for name in ("note.txt.enc", "note.txt.key"):
+            self.assertTrue(os.path.exists(os.path.join(self.results, name)), name)
+        # nothing is written beside the input file
+        self.assertEqual(sorted(os.listdir(self.tmp.name)), ["note.txt", "results"])
         self.assertFalse(app.keys["aes"].loaded)              # single-use
         self.assertFalse(self.start_enabled(app))
         self.assertEqual(self.dialogs.errors, [])
+
+    def test_custom_output_folder_is_used_instead_of_results(self):
+        app = self.make_app()
+        src = self.make_file("note.txt", b"abc")
+        other = os.path.join(self.tmp.name, "chosen")
+        os.mkdir(other)
+        app.get_key("aes"); self.settle(app)
+        app.aes_in.set(src)
+        app.aes_out.set(other)                                 # as if chosen with Browse
+        app.start(); self.settle(app)
+        self.assertTrue(app.result_text.get().startswith("Match"))
+        self.assertEqual(sorted(os.listdir(other)),
+                         ["note.txt.enc", "note.txt.key", "note_decrypted.txt"])
+        self.assertFalse(os.path.exists(self.results))
+
+    def test_missing_custom_folder_is_an_error_and_not_created(self):
+        app = self.make_app()
+        src = self.make_file("note.txt", b"abc")
+        missing = os.path.join(self.tmp.name, "nope")
+        app.get_key("aes"); self.settle(app)
+        app.aes_in.set(src)
+        app.aes_out.set(missing)
+        app.start()
+        self.assertFalse(app.busy)
+        self.assertIn("does not exist", self.dialogs.errors[-1][1])
+        self.assertFalse(os.path.exists(missing))
+        self.assertTrue(app.keys["aes"].loaded)                # key kept for a retry
+
+    def test_empty_output_field_falls_back_to_results(self):
+        app = self.make_app()
+        src = self.make_file("note.txt", b"abc")
+        app.get_key("aes"); self.settle(app)
+        app.aes_in.set(src)
+        app.aes_out.set("")
+        app.start(); self.settle(app)
+        self.assertTrue(os.path.exists(os.path.join(self.results, "note.txt.enc")))
+
+    def test_results_folder_not_created_when_input_is_rejected(self):
+        app = self.make_app()
+        big = self.make_file("big.bin", b"x" * (cc.AES_MAX_PLAINTEXT + 1))
+        app.get_key("aes"); self.settle(app)
+        app.aes_in.set(big)
+        app.start()
+        self.assertIn("big.bin", self.dialogs.errors[-1][1])
+        self.assertFalse(os.path.exists(self.results))
+
+    def test_results_folder_not_created_when_overwrite_declined(self):
+        app = self.make_app(dialogs=FakeDialogs(confirm_answer=False))
+        src = self.make_file("n.txt", b"abc")
+        self.make_file(os.path.join("results", "n.txt.key"), b"old")
+        app.get_key("aes"); self.settle(app)
+        app.aes_in.set(src)
+        app.start()
+        self.assertEqual(os.listdir(self.results), ["n.txt.key"])  # nothing new written
 
     def test_mismatch_shown_and_not_saved(self):
         self.srv.behavior = "tamper_decrypt"
@@ -124,30 +188,30 @@ class AesGuiTests(GuiTestCase):
         app.aes_in.set(src)
         app.start(); self.settle(app)
         self.assertTrue(app.result_text.get().startswith("Mismatch"))
-        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "n_decrypted.txt")))
+        self.assertFalse(os.path.exists(os.path.join(self.results, "n_decrypted.txt")))
 
     def test_overwrite_declined_cancels_before_network(self):
         app = self.make_app(dialogs=FakeDialogs(confirm_answer=False))
         self.dialogs = app.dialogs
         src = self.make_file("n.txt", b"abc")
-        self.make_file("n.txt.enc", b"old")
+        self.make_file(os.path.join("results", "n.txt.enc"), b"old")
         app.get_key("aes"); self.settle(app)
         app.aes_in.set(src)
         app.start()
         self.assertFalse(app.busy)
         self.assertEqual(len(self.dialogs.confirms), 1)
-        self.assertEqual(self.read(src + ".enc"), b"old")     # untouched
+        self.assertEqual(self.read(os.path.join(self.results, "n.txt.enc")), b"old")  # untouched
         self.assertTrue(app.keys["aes"].loaded)               # key kept
 
     def test_overwrite_accepted(self):
         app = self.make_app()
         src = self.make_file("n.txt", b"abc")
-        self.make_file("n.txt.enc", b"old")
+        self.make_file(os.path.join("results", "n.txt.enc"), b"old")
         app.get_key("aes"); self.settle(app)
         app.aes_in.set(src)
         app.start(); self.settle(app)
         self.assertEqual(len(self.dialogs.confirms), 1)
-        self.assertNotEqual(self.read(src + ".enc"), b"old")
+        self.assertNotEqual(self.read(os.path.join(self.results, "n.txt.enc")), b"old")
 
     def test_invalid_username_rejected_without_contacting_server(self):
         app = self.make_app()
@@ -201,13 +265,16 @@ class HmacGuiTests(GuiTestCase):
         app.hmac_in.set(src)
         app.start(); self.settle(app)
         self.assertTrue(app.result_text.get().startswith("VERIFIED"))
-        self.assertTrue(os.path.exists(src + ".hmac") and os.path.exists(src + ".hmackey"))
+        hmac_p = os.path.join(self.results, "doc.txt.hmac")
+        key_p = os.path.join(self.results, "doc.txt.hmackey")
+        self.assertTrue(os.path.exists(hmac_p) and os.path.exists(key_p))
+        self.assertFalse(os.path.exists(src + ".hmac"))       # not beside the input
         self.assertFalse(app.keys["hmac"].loaded)
 
         app.hmac_mode.set("saved")
         self.pump(0.05)
-        self.assertEqual(app.hmac_file.get(), src + ".hmac")      # autofilled
-        self.assertEqual(app.hmackey_file.get(), src + ".hmackey")
+        self.assertEqual(app.hmac_file.get(), hmac_p)             # found in results
+        self.assertEqual(app.hmackey_file.get(), key_p)
         self.assertTrue(self.start_enabled(app))                  # no key needed
         app.start(); self.settle(app)
         self.assertTrue(app.result_text.get().startswith("VERIFIED"))
@@ -217,6 +284,30 @@ class HmacGuiTests(GuiTestCase):
         app.start(); self.settle(app)
         self.assertTrue(app.result_text.get().startswith("FAILED"))
         self.assertEqual(self.dialogs.errors, [])   # FAILED is not an error dialog
+
+    def test_hmac_output_defaults_to_results_and_can_be_changed(self):
+        app = self.make_app()
+        self.switch_to_hmac(app)
+        src = self.make_file("doc.txt", b"hello world")
+        app.hmac_in.set(src)
+        self.assertEqual(app.hmac_out.get(), self.results)
+        other = os.path.join(self.tmp.name, "chosen")
+        os.mkdir(other)
+        app.hmac_out.set(other)
+        app.get_key("hmac"); self.settle(app)
+        app.start(); self.settle(app)
+        self.assertTrue(app.result_text.get().startswith("VERIFIED"))
+        self.assertEqual(sorted(os.listdir(other)), ["doc.txt.hmac", "doc.txt.hmackey"])
+        self.assertFalse(os.path.exists(self.results))
+
+    def test_saved_mode_falls_back_to_files_beside_input(self):
+        app = self.make_app()
+        self.switch_to_hmac(app)
+        src = self.make_file("doc.txt", b"hello world")
+        app.hmac_mode.set("saved")
+        app.hmac_in.set(src)
+        self.assertEqual(app.hmac_file.get(), src + ".hmac")       # nothing in results
+        self.assertEqual(app.hmackey_file.get(), src + ".hmackey")
 
     def test_failed_and_error_use_different_styles(self):
         app = self.make_app()

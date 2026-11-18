@@ -35,14 +35,14 @@ These values are not saved between runs. Invalid values are rejected without con
 ### AES
 1. Select **AES encrypt / decrypt**.
 2. Click **Get AES Key**. The window shows "Key loaded" (never the key itself).
-3. Click **Browse...** next to *Input file* and choose a file. The *Output folder* fills in with the file's folder, and you can change it.
+3. Click **Browse...** next to *Input file* and choose a file. The *Output folder* fills in with a `results` folder next to that file. Click **Browse...** beside it to choose a different folder.
 4. Click **Start Encrypting**.
 
 ### HMAC
 1. Select **HMAC verify**.
 2. Choose a mode:
-   - **Compute & verify:** click **Get HMAC Key**, browse to an input file (and change the output folder if you want), then click **Start Verifying**.
-   - **Verify saved files:** browse to the input file. Its `.hmac` and `.hmackey` paths fill in automatically, and you can change them. Click **Start Verifying**. No key is needed.
+   - **Compute & verify:** click **Get HMAC Key**, browse to an input file (the output folder defaults to `results` next to it, or choose another), then click **Start Verifying**.
+   - **Verify saved files:** browse to the input file. Its `.hmac` and `.hmackey` paths fill in automatically (from the `results` folder if they are there, otherwise from next to the file), and you can change them. Click **Start Verifying**. No key is needed.
 
 A key can be used for one run. After the server gives a valid reply you must fetch a new key. If an error occurs, the key is kept so you can retry.
 
@@ -57,15 +57,15 @@ The outcome appears in the result line just below the Start button, with more de
 
 **FAILED** is a normal answer (the HMAC does not match the file and key). Errors, such as a bad username, an unreachable server or a file over the size limit, appear as a red message and a dialog instead.
 
-Files are saved in the output folder (by default, next to the input file). The app asks before overwriting an existing file.
+Files are saved in the **Output folder**. By default this is a `results` folder next to the input file, which the app creates for you if it does not exist. A folder you choose yourself must already exist. The app asks before overwriting an existing file.
 
-| File | Written by | Naming for `photo.jpg` |
+| File | Written by | Saved as, for `photo.jpg` |
 |---|---|---|
-| Encrypted file | AES | `photo.jpg.enc` |
-| AES key | AES | `photo.jpg.key` |
-| Decrypted copy, only after a Match | AES | `photo_decrypted.jpg` |
-| HMAC | HMAC (compute) | `photo.jpg.hmac` |
-| HMAC key | HMAC (compute) | `photo.jpg.hmackey` |
+| Encrypted file | AES | `results/photo.jpg.enc` |
+| AES key | AES | `results/photo.jpg.key` |
+| Decrypted copy, only after a Match | AES | `results/photo_decrypted.jpg` |
+| HMAC | HMAC (compute) | `results/photo.jpg.hmac` |
+| HMAC key | HMAC (compute) | `results/photo.jpg.hmackey` |
 
 The decrypted copy keeps the original extension, with `_decrypted` added before it. A name with no extension, such as `README`, becomes `README_decrypted`.
 
