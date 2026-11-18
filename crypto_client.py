@@ -312,10 +312,25 @@ def check_output_dir(out_dir):
         raise FileAccessError(f"Output folder is not writable: {out_dir}")
 
 
+def decrypted_name(filename):
+    """Insert "_decrypted" before the last extension: photo.jpg -> photo_decrypted.jpg.
+
+    A name with no extension just gets the suffix (README -> README_decrypted).
+    """
+    stem, ext = os.path.splitext(filename)
+    return f"{stem}_decrypted{ext}"
+
+
 def aes_output_paths(in_path, out_dir):
-    """Return (enc_path, key_path, decrypted_path) per the spec's naming."""
-    base = os.path.join(out_dir, os.path.basename(in_path))
-    return base + ".enc", base + ".key", base + ".decrypted"
+    """Return (enc_path, key_path, decrypted_path).
+
+    .enc and .key follow the spec's naming; the decrypted copy keeps the
+    original extension: photo.jpg -> photo_decrypted.jpg.
+    """
+    name = os.path.basename(in_path)
+    base = os.path.join(out_dir, name)
+    return (base + ".enc", base + ".key",
+            os.path.join(out_dir, decrypted_name(name)))
 
 
 # --------------------------------------------------------------------------
@@ -341,7 +356,8 @@ def aes_roundtrip(conn, key, in_path, out_dir):
     """Encrypt locally, have the server decrypt, compare with the original.
 
     The .enc and .key files are written before the network request; the
-    .decrypted file is written only after a byte-for-byte match.
+    decrypted copy (<name>_decrypted.<ext>) is written only after a
+    byte-for-byte match.
     """
     plaintext = read_input_file(in_path, AES_MAX_PLAINTEXT)
     check_output_dir(out_dir)

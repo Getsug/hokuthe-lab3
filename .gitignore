@@ -30,7 +30,6 @@ desktop.ini
 *.hmackey
 *.enc
 *.hmac
-*.decrypted
-
-# Claude Code local settings
-.claude/settings.local.json
+# Decrypted copies: photo.jpg -> photo_decrypted.jpg (README -> README_decrypted)
+*_decrypted.*
+*_decrypted

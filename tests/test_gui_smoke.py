@@ -109,7 +109,8 @@ class AesGuiTests(GuiTestCase):
         app.start()
         self.settle(app)
         self.assertTrue(app.result_text.get().startswith("Match"), app.result_text.get())
-        self.assertEqual(self.read(src + ".decrypted"), b"some secret text")
+        dec = os.path.join(self.tmp.name, "note_decrypted.txt")
+        self.assertEqual(self.read(dec), b"some secret text")
         self.assertTrue(os.path.exists(src + ".enc") and os.path.exists(src + ".key"))
         self.assertFalse(app.keys["aes"].loaded)              # single-use
         self.assertFalse(self.start_enabled(app))
@@ -123,7 +124,7 @@ class AesGuiTests(GuiTestCase):
         app.aes_in.set(src)
         app.start(); self.settle(app)
         self.assertTrue(app.result_text.get().startswith("Mismatch"))
-        self.assertFalse(os.path.exists(src + ".decrypted"))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "n_decrypted.txt")))
 
     def test_overwrite_declined_cancels_before_network(self):
         app = self.make_app(dialogs=FakeDialogs(confirm_answer=False))

@@ -143,6 +143,31 @@ It should not present generated files as extra deliverables. Modify only `README
 
 **Assistant:** Created this file.
 
+## 10. .gitignore
+
+**User:** "add a .gitignore"
+
+**Assistant:** Created `.gitignore` covering Python clutter, editor and OS files, and the app's generated files (`*.key`, `*.hmackey`, `*.enc`, `*.hmac`, `*.decrypted`) so real keys are not committed by accident. `__pycache__/` stopped appearing in `git status`. The user later edited the file themselves, adding more Python tool caches, virtual-environment names and a Claude Code local-settings entry.
+
+## 11. Decrypted file naming change
+
+**User:** Update the decrypted file naming convention to preserve the original extension by inserting `_decrypted` before it (for example `photo.jpg` becomes `photo_decrypted.jpg`). Apply it consistently across the implementation, tests, README and design documentation. Preserve existing functionality and do not modify `crypto_message_spec_v2.md` or `requirements_v1.md`.
+
+**Assistant:** Made the change and ran the full suite (102 tests, all passing):
+- **Code:** added `decrypted_name()`, which splits at the last extension, and `aes_output_paths()` now uses it. `.enc` and `.key` keep the spec's naming. The overwrite check picks up the new path automatically.
+- **Edge cases:** `archive.tar.gz` becomes `archive.tar_decrypted.gz`, `README` becomes `README_decrypted`, and `.bashrc` becomes `.bashrc_decrypted`.
+- **Tests:** updated the old expectations in `test_workflows.py` and `test_gui_smoke.py`, and added tests for the naming rule and for the overwrite check covering the new path.
+- **Docs:** updated `README.md` and `design_v1.md`. Also updated R16 in `requirements_v2.md`, which was not on the user's list but would otherwise have contradicted the code.
+- **Left alone:** the spec, `requirements_v1.md`, and the `.gitignore` rule `*.decrypted`, which was now stale. It flagged that the old name also still appears in section 3 of this log, as history.
+
+## 12. .gitignore update and this log
+
+**User:** "update .gitignore and add append this to project_chat.md"
+
+**Assistant:**
+- **`.gitignore`:** replaced the stale `*.decrypted` rule with `*_decrypted.*` and `*_decrypted`, and removed a duplicated Claude Code settings block. Checked that `photo_decrypted.jpg`, `README_decrypted` and `archive.tar_decrypted.gz` are ignored, and that source, tests and docs are not.
+- **This log:** added sections 10–12 and refreshed the closing file list and open items, which were out of date (they said there was no `.gitignore` and counted 99 tests).
+
 ---
 
 ## Files produced in this session
@@ -153,15 +178,15 @@ It should not present generated files as extra deliverables. Modify only `README
 | `design_v1.md` | Approved design (D1–D6) |
 | `crypto_client.py` | The application (validation, framing, transport, crypto, workflows, self-checks, GUI) |
 | `mock_server.py` | Local mock server with its own HMAC and fault modes |
-| `tests/` | 99 `unittest` tests (all passing at last run) |
+| `tests/` | 102 `unittest` tests (all passing at last run) |
 | `requirements.txt` | `cryptography>=46.0.0` |
 | `README.md` | Setup, usage, results and testing |
 | `interrogation.md` | Written answers Q1–Q5 (plus the HMAC caveat) |
 | `project_chat.md` | This log |
+| `.gitignore` | Ignores caches, editor files and the app's generated key, encrypted and decrypted files |
 
 ## Open items
 
 - Real-server testing has not been done. It needs the host and username from the instructor.
 - R40 and the shortened `README.md` disagree about including project structure.
-- `__pycache__/` is untracked and there is no `.gitignore`.
 - Nothing has been committed.

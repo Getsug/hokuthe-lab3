@@ -40,7 +40,7 @@ Errors (such as a bad username, a connection problem or an oversized file) are s
 
 Files are saved next to the input file, or in the output folder you choose, and the app asks before overwriting anything. For an input file `report.txt`:
 
-- **AES:** `report.txt.enc`, `report.txt.key`, and `report.txt.decrypted` (only after a Match)
+- **AES:** `report.txt.enc`, `report.txt.key`, and `report_decrypted.txt` (only after a Match)
 - **HMAC:** `report.txt.hmac` and `report.txt.hmackey`
 
 ## Testing

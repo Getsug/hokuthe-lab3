@@ -37,7 +37,7 @@ Protocol details defined in `crypto_message_spec_v2.md` are not repeated here.
 
 - **R14.** The user shall fetch an AES key, select an input file and an output folder, and start the run. The run encrypts locally, sends the encrypted file and key to the server for decryption, and compares the returned bytes with the original.
 - **R15.** The application shall save `<file>.enc` and `<file>.key` using the spec's naming convention, immediately after local encryption and before the network request.
-- **R16.** The application shall save the returned decrypted file as `<file>.decrypted` only after a byte-for-byte match with the original.
+- **R16.** The application shall save the returned decrypted file as `<stem>_decrypted<ext>` (the original extension is kept, for example `photo.jpg` becomes `photo_decrypted.jpg`) only after a byte-for-byte match with the original.
 - **R17.** The result shall be displayed as **Match** or **Mismatch**.
 
 ## 5. HMAC Workflow

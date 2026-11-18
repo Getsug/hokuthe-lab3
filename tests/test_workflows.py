@@ -29,6 +29,32 @@ class WorkflowTestCase(unittest.TestCase):
         return cc.Connection("127.0.0.1", srv.port, user)
 
 
+class DecryptedNameTests(unittest.TestCase):
+    def test_extension_preserved(self):
+        cases = {
+            "photo.jpg": "photo_decrypted.jpg",
+            "report.txt": "report_decrypted.txt",
+            "archive.tar.gz": "archive.tar_decrypted.gz",   # last extension only
+            "README": "README_decrypted",                    # no extension
+            ".bashrc": ".bashrc_decrypted",                  # dotfile, no extension
+            "a.b.c.d": "a.b.c_decrypted.d",
+            "photo_decrypted.jpg": "photo_decrypted_decrypted.jpg",
+        }
+        for name, expected in cases.items():
+            with self.subTest(name):
+                self.assertEqual(cc.decrypted_name(name), expected)
+
+    def test_overwrite_check_covers_decrypted_copy(self):
+        paths = cc.planned_outputs("aes", None, os.path.join("in", "photo.jpg"), "out")
+        self.assertIn(os.path.join("out", "photo_decrypted.jpg"), paths)
+
+    def test_output_paths(self):
+        enc, key, dec = cc.aes_output_paths(os.path.join("in", "photo.jpg"), "out")
+        self.assertEqual(enc, os.path.join("out", "photo.jpg.enc"))
+        self.assertEqual(key, os.path.join("out", "photo.jpg.key"))
+        self.assertEqual(dec, os.path.join("out", "photo_decrypted.jpg"))
+
+
 class AesRoundtripTests(WorkflowTestCase):
     def roundtrip(self, data, name="report.txt", behavior="normal"):
         src = self.make(name, data)
@@ -44,7 +70,7 @@ class AesRoundtripTests(WorkflowTestCase):
         self.assertTrue(result.match)
         self.assertEqual(result.enc_path, os.path.join(out, "report.txt.enc"))
         self.assertEqual(self.read(result.decrypted_path), data)
-        self.assertEqual(os.path.basename(result.decrypted_path), "report.txt.decrypted")
+        self.assertEqual(os.path.basename(result.decrypted_path), "report_decrypted.txt")
         # .enc is nonce|ciphertext|tag and decrypts locally with the saved key
         saved_key = cc.b64decode(self.read(result.key_path).decode())
         self.assertEqual(saved_key, key)
@@ -70,7 +96,7 @@ class AesRoundtripTests(WorkflowTestCase):
         self.assertIsNone(result.decrypted_path)
         self.assertTrue(os.path.exists(result.enc_path))
         self.assertTrue(os.path.exists(result.key_path))
-        self.assertFalse(os.path.exists(os.path.join(out, "report.txt.decrypted")))
+        self.assertFalse(os.path.exists(os.path.join(out, "report_decrypted.txt")))
 
     def test_too_large_refused_before_connecting(self):
         src = self.make("big.bin", b"x" * (cc.AES_MAX_PLAINTEXT + 1))

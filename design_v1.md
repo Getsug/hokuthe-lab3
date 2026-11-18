@@ -102,12 +102,12 @@ All three return a result dataclass. They take plain arguments (including alread
 
 **`aes_roundtrip(conn, key, in_path, out_dir) -> AesResult`**
 1. Read the input file [R10, R11].
-2. Resolve the output paths: `<out_dir>/<name>.enc`, `.key` and `.decrypted` (`name` is the input file's name).
+2. Resolve the output paths: `<out_dir>/<name>.enc` and `<name>.key`, plus the decrypted copy `<stem>_decrypted<ext>` (`name` is the input file's name; `decrypted_name()` inserts `_decrypted` before the last extension, so `photo.jpg` becomes `photo_decrypted.jpg` and a name with no extension just gets the suffix).
 3. Encrypt locally.
 4. Write `.enc`, and write `.key` as base64 text with no trailing newline [R15].
 5. Send `decrypt` and receive the plaintext.
 6. Compare the returned bytes with the original using plain `==`. This is not a secret comparison, and the stdlib `hmac` module is avoided anyway.
-7. On a match, write `<name>.decrypted` [R16]. Return `Match` or `Mismatch` [R17].
+7. On a match, write the decrypted copy `<stem>_decrypted<ext>` [R16]. Return `Match` or `Mismatch` [R17].
 
 **`hmac_compute_and_verify(conn, key, in_path, out_dir) -> HmacResult`**
 1. Read the input file.
@@ -121,7 +121,7 @@ All three return a result dataclass. They take plain arguments (including alread
 2. Read the two companion files, strip whitespace, base64-decode, and require exactly 32 bytes each, otherwise raise `ValidationError` [R19].
 3. Send `verify_hmac` and return the result. The stored HMAC is sent as-is, and the client does not recompute it.
 
-**Overwrite pre-check [R24].** `planned_outputs(workflow, ...)` returns every path a run could write, including `.decrypted`. The controller checks which exist and asks for confirmation on the main thread before starting the worker. Declining cancels the run before any network activity. The check happens at Start, not at Get Key.
+**Overwrite pre-check [R24].** `planned_outputs(workflow, ...)` returns every path a run could write, including the decrypted-copy path. The controller checks which exist and asks for confirmation on the main thread before starting the worker. Declining cancels the run before any network activity. The check happens at Start, not at Get Key.
 
 **Key lifetime [R22].**
 - A `KeyHolder` per workflow stores `bytes | None`, with `set()`, `clear()` and `loaded` (bool).
@@ -242,8 +242,8 @@ All three return a result dataclass. They take plain arguments (including alread
 ## 7. Design decisions to confirm
 
 - **D1.** Key and HMAC files are written as base64 text with no trailing newline. Reading accepts surrounding whitespace.
-- **D2.** The `.enc` and `.key` files, and `.hmac` and `.hmackey`, are written before the network call, as approved. The `.decrypted` file is only written on a match.
+- **D2.** The `.enc` and `.key` files, and `.hmac` and `.hmackey`, are written before the network call, as approved. The decrypted copy (`<stem>_decrypted<ext>`) is only written on a match.
 - **D3.** Reply header length is capped at 1000 bytes (the spec's header limit). Reply `payload_len` is capped at 1 MiB.
 - **D4.** Reading input files is capped at `limit + 1` bytes, so a very large file is never loaded in full.
 - **D5.** The server's `error` detail text is shown to the user as-is (it is generic), and truncated to a safe length.
-- **D6.** The overwrite check includes the `.decrypted` path, even though it is written only on success.
+- **D6.** The overwrite check includes the decrypted-copy path, even though it is written only on success.
